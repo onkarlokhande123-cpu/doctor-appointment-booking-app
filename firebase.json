@@ -1,0 +1,25 @@
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "doctor-appointment-team-2026",
+          "configurations": {
+            "android": "1:492955614086:android:9383ea3d56ae3a921e8a07",
+            "web": "1:492955614086:web:0db648f5dbb76a841e8a07"
+          }
+        }
+      },
+      "android": {
+        "default": {
+          "projectId": "doctor-appointment-team-2026",
+          "appId": "1:492955614086:android:9383ea3d56ae3a921e8a07",
+          "fileOutput": "android/app/google-services.json"
+        }
+      }
+    }
+  }
+}

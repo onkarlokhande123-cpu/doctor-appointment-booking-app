@@ -1,0 +1,198 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isProfileOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function appointmentPath(appointmentId) {
+      return /databases/$(database)/documents/appointments/$(appointmentId);
+    }
+
+    function userPath(userId) {
+      return /databases/$(database)/documents/users/$(userId);
+    }
+
+    function doctorPath(doctorId) {
+      return /databases/$(database)/documents/doctors/$(doctorId);
+    }
+
+    function slotPath(slotId) {
+      return /databases/$(database)/documents/doctorSlots/$(slotId);
+    }
+
+    function isDoctorFor(doctorId) {
+      return isSignedIn() &&
+        exists(userPath(request.auth.uid)) &&
+        get(userPath(request.auth.uid)).data.role == 'doctor' &&
+        get(userPath(request.auth.uid)).data.doctorId == doctorId;
+    }
+
+    function hasOnlyAppointmentFields(data) {
+      return data.keys().hasAll([
+          'bookingId', 'userId', 'doctorId', 'doctorName',
+          'doctorImageUrl', 'date', 'timeSlotId', 'startTime', 'endTime',
+          'patientName', 'patientEmail', 'patientAge', 'patientGender',
+          'patientPhone', 'reason', 'fee', 'status', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'bookingId', 'userId', 'doctorId', 'doctorName',
+          'doctorImageUrl', 'date', 'timeSlotId', 'startTime', 'endTime',
+          'patientName', 'patientEmail', 'patientAge', 'patientGender',
+          'patientPhone', 'reason', 'fee', 'status', 'createdAt'
+        ]);
+    }
+
+    function matchesDoctorAndSlot(appointment) {
+      return exists(doctorPath(appointment.doctorId)) &&
+        existsAfter(slotPath(appointment.timeSlotId)) &&
+        get(doctorPath(appointment.doctorId)).data.id == appointment.doctorId &&
+        get(doctorPath(appointment.doctorId)).data.name == appointment.doctorName &&
+        get(doctorPath(appointment.doctorId)).data.imageUrl == appointment.doctorImageUrl &&
+        get(doctorPath(appointment.doctorId)).data.consultationFee == appointment.fee &&
+        getAfter(slotPath(appointment.timeSlotId)).data.id == appointment.timeSlotId &&
+        getAfter(slotPath(appointment.timeSlotId)).data.doctorId == appointment.doctorId &&
+        getAfter(slotPath(appointment.timeSlotId)).data.date == appointment.date &&
+        getAfter(slotPath(appointment.timeSlotId)).data.startTime == appointment.startTime &&
+        getAfter(slotPath(appointment.timeSlotId)).data.endTime == appointment.endTime &&
+        getAfter(slotPath(appointment.timeSlotId)).data.startsAt > request.time &&
+        getAfter(slotPath(appointment.timeSlotId)).data.isBooked == true &&
+        getAfter(slotPath(appointment.timeSlotId)).data.bookedByUserId == request.auth.uid &&
+        getAfter(slotPath(appointment.timeSlotId)).data.appointmentId == appointment.bookingId;
+    }
+
+    match /users/{userId} {
+      // A profile can only be read by its authenticated owner.
+      allow get, list: if isProfileOwner(userId);
+
+      // Registration creates the profile for the Firebase Auth user. The id
+      // and initial role must match the authenticated user and patient app.
+      allow create: if isProfileOwner(userId)
+        && request.resource.data.id == userId
+        && request.resource.data.role == 'patient'
+        && request.resource.data.doctorId == null
+        && request.resource.data.keys().hasOnly([
+          'id', 'name', 'email', 'phone', 'role', 'doctorId',
+          'profileImageUrl', 'createdAt'
+        ]);
+
+      // Clients may edit profile details, but cannot change identity,
+      // creation time, or their own role.
+      allow update: if isProfileOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          'id', 'name', 'email', 'phone', 'role', 'doctorId',
+          'profileImageUrl', 'createdAt'
+        ])
+        && !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['id', 'role', 'doctorId', 'createdAt']);
+
+      allow delete: if isProfileOwner(userId);
+    }
+
+    // The signed-in appointment app may read its public doctor catalogue,
+    // but only trusted server-side tooling may curate it.
+    match /doctors/{doctorId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Specialties are catalogue metadata used with the doctor list.
+    match /specialties/{specialtyId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /appointments/{appointmentId} {
+      allow get, list: if isProfileOwner(resource.data.userId) ||
+        isDoctorFor(resource.data.doctorId);
+
+      // A booking is only valid when this same transaction reserves the
+      // matching future slot for the signed-in patient.
+      allow create: if isProfileOwner(request.resource.data.userId) &&
+        request.resource.data.bookingId == appointmentId &&
+        request.resource.data.status == 'upcoming' &&
+        request.resource.data.createdAt == request.time &&
+        hasOnlyAppointmentFields(request.resource.data) &&
+        matchesDoctorAndSlot(request.resource.data);
+
+      // Patients may only cancel their own upcoming appointment. All other
+      // appointment data is immutable and its slot must be released in the
+      // same atomic write.
+      allow update: if
+        // A patient may cancel only their own upcoming appointment, releasing
+        // its slot in the same transaction.
+        (isProfileOwner(resource.data.userId) &&
+          resource.data.status == 'upcoming' &&
+          request.resource.data.status == 'cancelled' &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status']) &&
+          getAfter(slotPath(resource.data.timeSlotId)).data.isBooked == false &&
+          getAfter(slotPath(resource.data.timeSlotId)).data.bookedByUserId == null &&
+          getAfter(slotPath(resource.data.timeSlotId)).data.appointmentId == null) ||
+
+        // The assigned doctor may cancel an upcoming appointment under the
+        // same slot-release rule, or complete it only after its start time.
+        (isDoctorFor(resource.data.doctorId) &&
+          resource.data.status == 'upcoming' &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status']) &&
+          ((request.resource.data.status == 'cancelled' &&
+            getAfter(slotPath(resource.data.timeSlotId)).data.isBooked == false &&
+            getAfter(slotPath(resource.data.timeSlotId)).data.bookedByUserId == null &&
+            getAfter(slotPath(resource.data.timeSlotId)).data.appointmentId == null) ||
+           (request.resource.data.status == 'completed' &&
+            get(slotPath(resource.data.timeSlotId)).data.startsAt <= request.time &&
+            get(slotPath(resource.data.timeSlotId)).data.appointmentId == appointmentId)));
+
+      allow delete: if false;
+    }
+
+    match /doctorSlots/{slotId} {
+      allow read: if isSignedIn();
+
+      // Catalogue slots are seeded by trusted tooling. A patient can only
+      // reserve an existing free future slot while atomically creating their
+      // matching appointment.
+      allow update: if
+        (isSignedIn() &&
+          resource.data.isBooked == false &&
+          request.resource.data.isBooked == true &&
+          request.resource.data.bookedByUserId == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['isBooked', 'bookedByUserId', 'appointmentId']) &&
+          existsAfter(appointmentPath(request.resource.data.appointmentId)) &&
+          getAfter(appointmentPath(request.resource.data.appointmentId)).data.userId == request.auth.uid &&
+          getAfter(appointmentPath(request.resource.data.appointmentId)).data.doctorId == resource.data.doctorId &&
+          getAfter(appointmentPath(request.resource.data.appointmentId)).data.timeSlotId == resource.data.id &&
+          getAfter(appointmentPath(request.resource.data.appointmentId)).data.status == 'upcoming') ||
+
+        // The same patient may release their own slot only while atomically
+        // cancelling its linked appointment. The assigned doctor may perform
+        // that same atomic release for their own appointment.
+        (resource.data.isBooked == true &&
+          (resource.data.bookedByUserId == request.auth.uid ||
+            isDoctorFor(resource.data.doctorId)) &&
+          request.resource.data.isBooked == false &&
+          request.resource.data.bookedByUserId == null &&
+          request.resource.data.appointmentId == null &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['isBooked', 'bookedByUserId', 'appointmentId']) &&
+          existsAfter(appointmentPath(resource.data.appointmentId)) &&
+          getAfter(appointmentPath(resource.data.appointmentId)).data.userId == resource.data.bookedByUserId &&
+          getAfter(appointmentPath(resource.data.appointmentId)).data.doctorId == resource.data.doctorId &&
+          getAfter(appointmentPath(resource.data.appointmentId)).data.status == 'cancelled');
+
+      allow create, delete: if false;
+    }
+
+    // All collections not explicitly allowed above remain private.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

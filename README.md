@@ -1,12 +1,12 @@
-<p align="center">
+<p align="">
   <img src="https://img.shields.io/badge/Flutter-%2302569B.svg?style=for-the-badge&logo=Flutter&logoColor=white" />
   <img src="https://img.shields.io/badge/Dart-%230175C2.svg?style=for-the-badge&logo=dart&logoColor=white" />
   <img src="https://img.shields.io/badge/Firebase-FFCA28?style=for-the-badge&logo=firebase&logoColor=black" />
 </p>
 
-<h1 align="center">🩺 Doctor Appointment Booking App</h1>
+<h1">🩺 Doctor Appointment Booking App</h1>
 
-<p align="center">
+<p>
 A modern, cross-platform <b>Doctor Appointment Booking App</b> built with <b>Flutter</b> and <b>Firebase</b>, letting patients discover doctors, check <b>available time slots</b>, and book appointments — while giving doctors a dedicated dashboard to manage their schedule.
 </p>
 

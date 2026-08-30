@@ -45,6 +45,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'My appointments',
+          icon: const Icon(Icons.calendar_month_outlined),
+          onPressed: () => context.push(AppRoutes.appointments),
+        ),
         title: const Text('MediCare'),
         actions: [
           IconButton(

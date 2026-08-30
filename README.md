@@ -188,15 +188,15 @@ This project was developed collaboratively by a team of 10 members.
 
 ## 🎓 Project Information
 
-|                 |                                |
-| --------------- | ------------------------------ |
-| **Project**     | Doctor Appointment Booking App |
-| **Platform**    | Flutter                        |
-| **Backend**     | Firebase                       |
-| **Database**    | Cloud Firestore                |
-| **Institution** | Sanjivani K.B.P. Polytechnic   |
+|                        |                                |
+|------------------------|--------------------------------|
+| **Project**            | Doctor Appointment Booking App |
+| **Platform**           | Flutter                        |
+| **Backend**            | Firebase                       |
+| **Database**           | Cloud Firestore                |
+| **Internship Company** | Thought Bliss Solutions        |
 
-Developed as an academic team project at **Sanjivani K.B.P. Polytechnic**.
+Developed as an internship project at **Thought Bliss Solutions**.
 
 ---
 
